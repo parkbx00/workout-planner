@@ -7,13 +7,16 @@ export default function ExerciseBrowser({
   exercises,
   emptyText,
   renderRow,
+  initialGroup = 'all',
 }: {
+  /** Muscle-group chip selected when the browser opens. */
+  initialGroup?: MuscleGroup | 'all'
   exercises: Exercise[] | undefined
   emptyText: string
   renderRow: (exercise: Exercise) => ReactNode
 }) {
   const [query, setQuery] = useState('')
-  const [group, setGroup] = useState<MuscleGroup | 'all'>('all')
+  const [group, setGroup] = useState<MuscleGroup | 'all'>(initialGroup)
 
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase()

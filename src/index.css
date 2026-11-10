@@ -34,3 +34,17 @@ select,
 textarea {
   font-size: 16px;
 }
+
+/* Rest timer hitting zero: three pulses of the accent colour over the whole screen. */
+@keyframes rest-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+.rest-flash {
+  animation: rest-flash 0.6s ease-in-out 4;
+}
