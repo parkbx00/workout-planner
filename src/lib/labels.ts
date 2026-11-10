@@ -20,3 +20,13 @@ export const EQUIPMENT_LABEL: Record<Equipment, string> = {
   dumbbell: 'Dumbbell',
   bodyweight: 'Bodyweight',
 }
+
+export const DAY_LABEL = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const

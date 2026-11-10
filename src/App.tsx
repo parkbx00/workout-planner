@@ -5,6 +5,8 @@ import ExerciseForm from './screens/ExerciseForm.tsx'
 import Exercises from './screens/Exercises.tsx'
 import History from './screens/History.tsx'
 import Settings from './screens/Settings.tsx'
+import TemplateAddExercise from './screens/TemplateAddExercise.tsx'
+import TemplateEditor from './screens/TemplateEditor.tsx'
 import Templates from './screens/Templates.tsx'
 import Today from './screens/Today.tsx'
 import Workout from './screens/Workout.tsx'
@@ -17,6 +19,8 @@ export default function App() {
           <Route path="/" element={<Today />} />
           <Route path="/workout" element={<Workout />} />
           <Route path="/templates" element={<Templates />} />
+          <Route path="/templates/edit/:id" element={<TemplateEditor />} />
+          <Route path="/templates/edit/:id/add" element={<TemplateAddExercise />} />
           <Route path="/templates/exercises" element={<Exercises />} />
           <Route path="/templates/exercises/new" element={<ExerciseForm />} />
           <Route path="/templates/exercises/:id" element={<ExerciseForm />} />

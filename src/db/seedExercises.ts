@@ -75,6 +75,10 @@ const V1: Record<MuscleGroup, SeedGroup> = {
   },
 }
 
-export const EXERCISE_SEEDS: { version: number; exercises: Record<MuscleGroup, SeedGroup> }[] = [
+export const EXERCISE_SEEDS: {
+  version: number
+  exercises: Partial<Record<MuscleGroup, SeedGroup>>
+}[] = [
   { version: 1, exercises: V1 },
+  { version: 2, exercises: { back: { machine: ['Chest-Supported Row Machine'] } } },
 ]
