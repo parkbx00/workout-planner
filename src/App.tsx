@@ -5,9 +5,11 @@ import RestBar from './components/RestBar.tsx'
 import TabBar from './components/TabBar.tsx'
 import { getActiveSession } from './db/sessions.ts'
 import { useWakeLock } from './lib/useWakeLock.ts'
+import ExerciseHistory from './screens/ExerciseHistory.tsx'
 import ExerciseForm from './screens/ExerciseForm.tsx'
 import Exercises from './screens/Exercises.tsx'
 import History from './screens/History.tsx'
+import SessionDetail from './screens/SessionDetail.tsx'
 import Settings from './screens/Settings.tsx'
 import TemplateAddExercise from './screens/TemplateAddExercise.tsx'
 import TemplateEditor from './screens/TemplateEditor.tsx'
@@ -38,6 +40,9 @@ export default function App() {
           <Route path="/templates/exercises/new" element={<ExerciseForm />} />
           <Route path="/templates/exercises/:id" element={<ExerciseForm />} />
           <Route path="/history" element={<History />} />
+          <Route path="/history/exercises" element={<History />} />
+          <Route path="/history/session/:id" element={<SessionDetail />} />
+          <Route path="/history/exercise/:id" element={<ExerciseHistory />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

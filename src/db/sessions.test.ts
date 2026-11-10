@@ -92,7 +92,7 @@ describe('starting a workout', () => {
 })
 
 describe('ghost values and pre-fill', () => {
-  it('shows last session as ghosts and pre-fills the new sets from it', async () => {
+  it('shows last session as ghosts and pre-fills the new sets with the progression target', async () => {
     const first = await startSession(await legsId())
     const [a, b, c] = (await load(first.id)).cards[0].sets
     for (const [set, weight, reps] of [[a, 135, 10], [b, 135, 9], [c, 125, 8]] as const) {
@@ -106,11 +106,14 @@ describe('ghost values and pre-fill', () => {
     const second = await startSession(await legsId())
     const { cards } = await load(second.id)
     expect(cards[0].previous.map((s) => [s.weight, s.reps])).toEqual([[135, 10], [135, 9], [125, 8]])
+    // Working sets were 135 × 10 and 135 × 9 (in range) → same weight, +1 rep on the weakest set.
+    expect(cards[0].suggestion).toEqual({ kind: 'add-rep', weight: 135, reps: [10, 10, 9] })
     expect(cards[0].sets.map((s) => [s.weight, s.reps, s.completed])).toEqual([
       [135, 10, false],
+      [135, 10, false],
       [135, 9, false],
-      [125, 8, false],
     ])
+    expect(cards[1].suggestion).toBeNull()
     expect(cards[1].sets[0]).toMatchObject({ weight: null, reps: null }) // Leg Press: never logged
   })
 
@@ -136,7 +139,31 @@ describe('ghost values and pre-fill', () => {
     const second = await startSession(await legsId())
     const { cards } = await load(second.id)
     expect(cards[0].previous[0]).toMatchObject({ weight: 60, unit: 'kg' })
-    expect(cards[0].sets[0]).toMatchObject({ weight: 132.5, unit: 'lb', reps: 10 })
+    expect(cards[0].sets[0]).toMatchObject({ weight: 132.5, unit: 'lb', reps: 11 })
+  })
+})
+
+describe('progression across sessions', () => {
+  it('raises the weight by the exercise increment after hitting repMax on every set', async () => {
+    const first = await startSession(await legsId())
+    await logAndFinish(first.id, 200, 12) // Smith Squat, 8–12, lower body = 10 lb jumps
+    const second = await startSession(await legsId())
+    const { cards } = await load(second.id)
+    expect(cards[0].suggestion).toEqual({ kind: 'increase', weight: 210, reps: [8, 8, 8] })
+    expect(cards[0].sets.map((s) => [s.weight, s.reps])).toEqual([[210, 8], [210, 8], [210, 8]])
+  })
+
+  it('suggests a 10% deload after two sessions in a row below repMin', async () => {
+    for (let i = 0; i < 2; i++) {
+      const session = await startSession(await legsId())
+      await logAndFinish(session.id, 200, 6)
+    }
+    const third = await startSession(await legsId())
+    expect((await load(third.id)).cards[0].suggestion).toEqual({
+      kind: 'deload',
+      weight: 180,
+      reps: [8, 8, 8],
+    })
   })
 })
 

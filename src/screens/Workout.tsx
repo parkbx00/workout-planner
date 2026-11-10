@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { RepsInput, WeightInput } from '../components/SetInputs.tsx'
 import Sheet, { SheetButton } from '../components/Sheet.tsx'
 import {
   addSet,
@@ -19,6 +20,7 @@ import {
 import type { Unit, WorkoutSet } from '../db/types.ts'
 import { formatClock, formatDuration, formatWeight } from '../lib/format.ts'
 import { EQUIPMENT_LABEL } from '../lib/labels.ts'
+import { describeSuggestion } from '../lib/progression.ts'
 import { restTimer } from '../lib/restTimer.ts'
 import { convertWeight } from '../lib/units.ts'
 
@@ -169,7 +171,7 @@ function Card({
   const navigate = useNavigate()
   const [menu, setMenu] = useState(false)
   const [confirmRemove, setConfirmRemove] = useState(false)
-  const { card, exercise, sets, previous } = data
+  const { card, exercise, sets, previous, suggestion } = data
   const name = exercise?.name ?? 'Unknown exercise'
   const hasLogged = sets.some((s) => s.completed)
 
@@ -187,6 +189,11 @@ function Card({
             Target {card.targetSets} × {card.repMin}–{card.repMax} · Rest{' '}
             {formatClock(card.restSeconds)}
             {exercise && ` · ${EQUIPMENT_LABEL[exercise.equipment]}`}
+          </p>
+          <p className={`mt-0.5 text-sm ${suggestion ? 'text-accent font-medium' : 'text-muted'}`}>
+            {suggestion
+              ? `Suggested: ${describeSuggestion(suggestion, unit)}`
+              : 'No history yet: this session sets your baseline.'}
           </p>
         </div>
         <button
@@ -216,6 +223,7 @@ function Card({
             set={set}
             index={i}
             ghost={previous[i]}
+            unit={unit}
             restSeconds={card.restSeconds}
           />
         ))}
@@ -265,26 +273,25 @@ function Card({
   )
 }
 
-const parseNumber = (text: string) => (text === '' || text === '.' ? null : Number(text))
-
 function SetRow({
   set,
   index,
   ghost,
+  unit,
   restSeconds,
 }: {
   set: WorkoutSet
   index: number
   ghost: WorkoutSet | undefined
+  unit: Unit
   restSeconds: number
 }) {
-  // While a field has focus its raw text lives here (so "12." survives); every keystroke is still saved.
-  const [weightText, setWeightText] = useState<string | null>(null)
-  const [repsText, setRepsText] = useState<string | null>(null)
   const [needsReps, setNeedsReps] = useState(false)
 
+  // Sets keep the unit they were entered in; everything on screen is in the selected unit.
+  const weight = set.weight === null ? null : convertWeight(set.weight, set.unit, unit)
   const ghostWeight =
-    ghost && ghost.weight !== null ? convertWeight(ghost.weight, ghost.unit, set.unit) : null
+    ghost && ghost.weight !== null ? convertWeight(ghost.weight, ghost.unit, unit) : null
 
   function toggle() {
     if (set.completed) return void setCompleted(set.id, false)
@@ -298,8 +305,6 @@ function SetRow({
     void setCompleted(set.id, true)
   }
 
-  const input =
-    'h-11 w-full rounded-lg text-center text-lg font-semibold tabular-nums outline-none focus:ring-1 focus:ring-accent'
   const tint = set.completed ? 'bg-accent/15 text-accent' : 'bg-surface-2'
 
   return (
@@ -309,7 +314,9 @@ function SetRow({
       <button
         type="button"
         disabled={!ghost}
-        onClick={() => void updateSet(set.id, { weight: ghostWeight, reps: ghost?.reps ?? null })}
+        onClick={() =>
+          void updateSet(set.id, { weight: ghostWeight, unit, reps: ghost?.reps ?? null })
+        }
         aria-label={ghost ? `Copy previous set ${index + 1}` : undefined}
         className="text-muted h-11 truncate rounded-lg text-center text-sm tabular-nums"
       >
@@ -318,47 +325,17 @@ function SetRow({
           : '—'}
       </button>
 
-      <input
-        inputMode="decimal"
-        enterKeyHint="done"
-        aria-label={`Set ${index + 1} weight`}
-        value={weightText ?? (set.weight === null ? '' : formatWeight(set.weight))}
-        onFocus={(e) => {
-          setWeightText(set.weight === null ? '' : formatWeight(set.weight))
-          e.currentTarget.select()
-        }}
-        onChange={(e) => {
-          const text = e.target.value
-            .replace(',', '.')
-            .replace(/[^\d.]/g, '')
-            .replace(/(\..*)\./g, '$1')
-            .slice(0, 6)
-          setWeightText(text)
-          void updateSet(set.id, { weight: parseNumber(text) })
-        }}
-        onBlur={() => setWeightText(null)}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        className={`${input} ${tint}`}
+      <WeightInput
+        label={`Set ${index + 1} weight`}
+        value={weight}
+        onChange={(value) => void updateSet(set.id, { weight: value, unit })}
+        className={tint}
       />
-
-      <input
-        inputMode="numeric"
-        pattern="[0-9]*"
-        enterKeyHint="done"
-        aria-label={`Set ${index + 1} reps`}
-        value={repsText ?? (set.reps === null ? '' : String(set.reps))}
-        onFocus={(e) => {
-          setRepsText(set.reps === null ? '' : String(set.reps))
-          e.currentTarget.select()
-        }}
-        onChange={(e) => {
-          const text = e.target.value.replace(/\D/g, '').slice(0, 3)
-          setRepsText(text)
-          void updateSet(set.id, { reps: parseNumber(text) })
-        }}
-        onBlur={() => setRepsText(null)}
-        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        className={`${input} ${tint} ${needsReps ? 'ring-2 ring-red-500' : ''}`}
+      <RepsInput
+        label={`Set ${index + 1} reps`}
+        value={set.reps}
+        onChange={(value) => void updateSet(set.id, { reps: value })}
+        className={`${tint} ${needsReps ? 'ring-2 ring-red-500' : ''}`}
       />
 
       <button

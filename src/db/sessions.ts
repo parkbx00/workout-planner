@@ -1,10 +1,18 @@
+import { suggest, type PastSession, type Suggestion } from '../lib/progression.ts'
 import { bestSet, totalVolume } from '../lib/stats.ts'
 import { convertWeight } from '../lib/units.ts'
 import { db, newId } from './db.ts'
 import { listTemplateExercises, TEMPLATE_EXERCISE_DEFAULTS } from './templates.ts'
 import type { Exercise, Session, SessionExercise, Unit, WorkoutSet } from './types.ts'
 
-const TABLES = [db.sessions, db.sessionExercises, db.sets, db.templateExercises, db.settings]
+const TABLES = [
+  db.sessions,
+  db.sessionExercises,
+  db.sets,
+  db.templateExercises,
+  db.settings,
+  db.exercises,
+]
 
 export async function getUnit(): Promise<Unit> {
   return ((await db.settings.get('unit'))?.value as Unit | undefined) ?? 'lb'
@@ -52,27 +60,80 @@ export async function getPreviousSets(
     .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.order - b.order)
 }
 
-/** New unchecked sets, pre-filled from the previous session so a set that goes to plan is one tap. */
+/**
+ * The last two finished sessions containing this exercise (most recent first),
+ * shaped for the progression engine with weights converted to `unit`.
+ */
+async function getProgressionHistory(
+  exerciseId: string,
+  excludeSessionId: string,
+  unit: Unit,
+): Promise<PastSession[]> {
+  const sets = await db.sets
+    .where('exerciseId')
+    .equals(exerciseId)
+    .filter((s) => s.completed && s.reps !== null && s.sessionId !== excludeSessionId)
+    .toArray()
+  if (sets.length === 0) return []
+
+  const sessions = (await db.sessions.bulkGet([...new Set(sets.map((s) => s.sessionId))]))
+    .filter((s): s is Session => s !== undefined && s.endedAt !== null)
+    .sort((a, b) => b.startedAt - a.startedAt)
+    .slice(0, 2)
+
+  const history: PastSession[] = []
+  for (const session of sessions) {
+    const own = sets
+      .filter((s) => s.sessionId === session.id)
+      .sort((a, b) => (a.completedAt ?? 0) - (b.completedAt ?? 0) || a.order - b.order)
+    // The rep range that session was logged with (snapshotted on its card).
+    const card = await db.sessionExercises.get(own[0].sessionExerciseId)
+    history.push({
+      sets: own.map((s) => ({
+        weight: s.weight === null ? null : convertWeight(s.weight, s.unit, unit),
+        reps: s.reps!,
+      })),
+      repMin: card?.repMin ?? TEMPLATE_EXERCISE_DEFAULTS.repMin,
+      repMax: card?.repMax ?? TEMPLATE_EXERCISE_DEFAULTS.repMax,
+    })
+  }
+  return history
+}
+
+/** Next target for this card from the exercise's own history, or null if it has never been logged. */
+export async function getSuggestion(
+  card: SessionExercise,
+  targetSets = card.targetSets,
+): Promise<Suggestion | null> {
+  const unit = await getUnit()
+  const exercise = await db.exercises.get(card.exerciseId)
+  return suggest({
+    history: await getProgressionHistory(card.exerciseId, card.sessionId, unit),
+    increment: (unit === 'lb' ? exercise?.incrementLb : exercise?.incrementKg) ?? (unit === 'lb' ? 5 : 2.5),
+    repMin: card.repMin,
+    repMax: card.repMax,
+    targetSets,
+  })
+}
+
+/** New unchecked sets, pre-filled with the suggested target so a set that goes to plan is one tap. */
 async function makeSets(card: SessionExercise, count: number, startOrder = 0): Promise<void> {
   const unit = await getUnit()
-  const previous = await getPreviousSets(card.exerciseId, card.sessionId)
+  const suggestion = await getSuggestion(card, count)
   const now = Date.now()
-  const rows: WorkoutSet[] = Array.from({ length: count }, (_, i) => {
-    const p = previous[i] ?? previous.at(-1)
-    return {
-      id: newId(),
-      sessionId: card.sessionId,
-      sessionExerciseId: card.id,
-      exerciseId: card.exerciseId,
-      order: startOrder + i,
-      weight: p && p.weight !== null ? convertWeight(p.weight, p.unit, unit) : null,
-      unit,
-      reps: p?.reps ?? null,
-      completed: false,
-      completedAt: null,
-      updatedAt: now,
-    }
-  })
+  const rows: WorkoutSet[] = Array.from({ length: count }, (_, i) => ({
+    id: newId(),
+    sessionId: card.sessionId,
+    sessionExerciseId: card.id,
+    exerciseId: card.exerciseId,
+    order: startOrder + i,
+    weight: suggestion?.weight ?? null,
+    unit,
+    reps: suggestion ? (suggestion.reps[i] ?? suggestion.reps[suggestion.reps.length - 1]) : null,
+    completed: false,
+    completedAt: null,
+    updatedAt: now,
+  }))
   await db.sets.bulkAdd(rows)
 }
 
@@ -115,7 +176,7 @@ export function startSession(templateId: string | null): Promise<Session> {
 
 export async function updateSet(
   id: string,
-  patch: Partial<Pick<WorkoutSet, 'weight' | 'reps'>>,
+  patch: Partial<Pick<WorkoutSet, 'weight' | 'reps' | 'unit'>>,
 ): Promise<void> {
   await db.sets.update(id, { ...patch, updatedAt: Date.now() })
 }
@@ -125,8 +186,11 @@ export async function setCompleted(id: string, completed: boolean): Promise<void
   await db.sets.update(id, { completed, completedAt: completed ? now : null, updatedAt: now })
 }
 
-/** Adds a set to the card, copying the weight and reps of the set above it. */
-export function addSet(sessionExerciseId: string): Promise<void> {
+/**
+ * Adds a set to the card, copying the weight and reps of the set above it.
+ * `completed` is for editing a past session, where a new set counts as done.
+ */
+export function addSet(sessionExerciseId: string, completed = false): Promise<void> {
   return db.transaction('rw', TABLES, async () => {
     const card = await db.sessionExercises.get(sessionExerciseId)
     if (!card) return
@@ -136,11 +200,30 @@ export function addSet(sessionExerciseId: string): Promise<void> {
       ...last,
       id: newId(),
       order: last.order + 1,
-      completed: false,
-      completedAt: null,
+      completed,
+      completedAt: completed ? Date.now() : null,
       updatedAt: Date.now(),
     })
   })
+}
+
+/** Deletes one set. A card left with no sets is removed too. */
+export function deleteSet(setId: string): Promise<void> {
+  return db.transaction('rw', TABLES, async () => {
+    const set = await db.sets.get(setId)
+    if (!set) return
+    await db.sets.delete(setId)
+    if ((await db.sets.where('sessionExerciseId').equals(set.sessionExerciseId).count()) === 0) {
+      await db.sessionExercises.delete(set.sessionExerciseId)
+    }
+  })
+}
+
+export async function updateSession(
+  id: string,
+  patch: Partial<Pick<Session, 'notes' | 'startedAt' | 'endedAt'>>,
+): Promise<void> {
+  await db.sessions.update(id, { ...patch, updatedAt: Date.now() })
 }
 
 export function removeLastSet(sessionExerciseId: string): Promise<void> {
@@ -299,6 +382,8 @@ export interface WorkoutCard {
   sets: WorkoutSet[]
   /** Last session's completed sets for this exercise (the "ghost" values). */
   previous: WorkoutSet[]
+  /** Progression target for this exercise; null when it has no history. */
+  suggestion: Suggestion | null
 }
 
 export interface Workout {
@@ -319,6 +404,7 @@ export async function loadWorkout(sessionId: string): Promise<Workout | null> {
   ])
   const exercises = await db.exercises.bulkGet(cards.map((c) => c.exerciseId))
   const previous = await Promise.all(cards.map((c) => getPreviousSets(c.exerciseId, sessionId)))
+  const suggestions = await Promise.all(cards.map((c) => getSuggestion(c)))
   return {
     session,
     templateName: template?.name ?? null,
@@ -328,6 +414,7 @@ export async function loadWorkout(sessionId: string): Promise<Workout | null> {
       exercise: exercises[i],
       sets: sets.filter((s) => s.sessionExerciseId === card.id).sort(bySetOrder),
       previous: previous[i],
+      suggestion: suggestions[i],
     })),
   }
 }
