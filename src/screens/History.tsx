@@ -4,11 +4,17 @@ import { Link, useLocation } from 'react-router-dom'
 import { listLoggedExercises, listSessions, type SessionListItem } from '../db/history.ts'
 import type { Unit } from '../db/types.ts'
 import { MUSCLE_LABEL } from '../lib/labels.ts'
+import Stats from './Stats.tsx'
 
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 
 export default function History() {
-  const showExercises = useLocation().pathname.endsWith('/exercises')
+  const { pathname } = useLocation()
+  const view = pathname.endsWith('/exercises')
+    ? 'exercises'
+    : pathname.endsWith('/stats')
+      ? 'stats'
+      : 'workouts'
   const tab = (active: boolean) =>
     `flex min-h-11 flex-1 items-center justify-center rounded-lg text-sm font-semibold ${
       active ? 'bg-surface-2 text-text' : 'text-muted'
@@ -18,14 +24,17 @@ export default function History() {
     <>
       <h1 className="text-3xl font-bold tracking-tight">History</h1>
       <div className="bg-surface mt-4 flex rounded-xl p-1">
-        <Link to="/history" replace className={tab(!showExercises)}>
+        <Link to="/history" replace className={tab(view === 'workouts')}>
           Workouts
         </Link>
-        <Link to="/history/exercises" replace className={tab(showExercises)}>
+        <Link to="/history/exercises" replace className={tab(view === 'exercises')}>
           Exercises
         </Link>
+        <Link to="/history/stats" replace className={tab(view === 'stats')}>
+          Weekly sets
+        </Link>
       </div>
-      {showExercises ? <ExerciseList /> : <SessionList />}
+      {view === 'exercises' ? <ExerciseList /> : view === 'stats' ? <Stats /> : <SessionList />}
     </>
   )
 }

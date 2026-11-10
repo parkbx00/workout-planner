@@ -1,3 +1,4 @@
+import { weeklySetsByMuscle, type MuscleCounts } from '../lib/charts.ts'
 import { bestSet, totalVolume } from '../lib/stats.ts'
 import { LB_PER_KG } from '../lib/units.ts'
 import { db } from './db.ts'
@@ -120,4 +121,22 @@ export async function listLoggedExercises(): Promise<LoggedExercise[]> {
       }
     })
     .sort((a, b) => b.lastAt - a.lastAt)
+}
+
+/** Completed sets per muscle group for every week that has a finished workout. */
+export async function getWeeklyMuscleSets(): Promise<Map<number, MuscleCounts>> {
+  const [sets, sessions, exercises] = await Promise.all([
+    db.sets.filter((s) => s.completed).toArray(),
+    db.sessions.toArray(),
+    db.exercises.toArray(),
+  ])
+  const startedAt = new Map(sessions.filter((s) => s.endedAt !== null).map((s) => [s.id, s.startedAt]))
+  const muscle = new Map(exercises.map((e) => [e.id, e.muscleGroup]))
+  return weeklySetsByMuscle(
+    sets.flatMap((s) => {
+      const t = startedAt.get(s.sessionId)
+      const muscleGroup = muscle.get(s.exerciseId)
+      return t !== undefined && muscleGroup ? [{ startedAt: t, muscleGroup }] : []
+    }),
+  )
 }

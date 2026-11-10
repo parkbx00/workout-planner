@@ -1,15 +1,30 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { lazy, Suspense, useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { getExerciseHistory } from '../db/history.ts'
+import { exerciseTrend } from '../lib/charts.ts'
 import { formatWeight } from '../lib/format.ts'
 import { EQUIPMENT_LABEL, MUSCLE_LABEL } from '../lib/labels.ts'
 import { convertWeight } from '../lib/units.ts'
 
-/** Every logged set for one exercise, grouped by workout, newest first. */
+// Recharts is large; load it only when a chart is actually shown.
+const TrendChart = lazy(() => import('../components/charts/TrendChart.tsx'))
+
+/** Charts plus every logged set for one exercise, grouped by workout, newest first. */
 export default function ExerciseHistory() {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const data = useLiveQuery(() => getExerciseHistory(id), [id])
+  const trend = useMemo(
+    () =>
+      data
+        ? exerciseTrend(
+            data.entries.map((e) => ({ startedAt: e.session.startedAt, sets: e.sets })),
+            data.unit,
+          )
+        : [],
+    [data],
+  )
   if (!data) return null
   const { exercise, unit, entries } = data
   const best = Math.max(0, ...entries.map((e) => e.e1rm ?? 0))
@@ -44,6 +59,31 @@ export default function ExerciseHistory() {
           </dd>
         </div>
       </dl>
+
+      {trend.length >= 2 ? (
+        <Suspense fallback={<div className="mt-4 h-[31rem]" />}>
+          <div className="mt-4 space-y-3">
+            <TrendChart
+              title="Estimated 1RM"
+              unit={unit}
+              data={trend.map((p) => ({ t: p.t, value: p.e1rm }))}
+            />
+            <TrendChart
+              title="Top set weight"
+              unit={unit}
+              data={trend.map((p) => ({ t: p.t, value: p.topWeight, detail: `× ${p.topReps}` }))}
+            />
+          </div>
+        </Suspense>
+      ) : (
+        entries.length > 0 && (
+          <p className="text-muted mt-4 text-sm">
+            {trend.length === 0
+              ? 'Charts track weight, so they need sets logged with a weight.'
+              : 'Log this exercise in one more workout to see its trend charts.'}
+          </p>
+        )
+      )}
 
       <h2 className="text-muted mt-6 mb-2 text-xs font-semibold tracking-wide uppercase">
         All sets

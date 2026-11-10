@@ -41,6 +41,7 @@ export default function App() {
           <Route path="/templates/exercises/:id" element={<ExerciseForm />} />
           <Route path="/history" element={<History />} />
           <Route path="/history/exercises" element={<History />} />
+          <Route path="/history/stats" element={<History />} />
           <Route path="/history/session/:id" element={<SessionDetail />} />
           <Route path="/history/exercise/:id" element={<ExerciseHistory />} />
           <Route path="/settings" element={<Settings />} />
