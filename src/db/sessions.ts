@@ -2,6 +2,7 @@ import { suggest, type PastSession, type Suggestion } from '../lib/progression.t
 import { bestSet, totalVolume } from '../lib/stats.ts'
 import { convertWeight } from '../lib/units.ts'
 import { db, newId } from './db.ts'
+import { getDefaultRestSeconds, getUnit } from './settings.ts'
 import { listTemplateExercises, TEMPLATE_EXERCISE_DEFAULTS } from './templates.ts'
 import type { Exercise, Session, SessionExercise, Unit, WorkoutSet } from './types.ts'
 
@@ -14,9 +15,7 @@ const TABLES = [
   db.exercises,
 ]
 
-export async function getUnit(): Promise<Unit> {
-  return ((await db.settings.get('unit'))?.value as Unit | undefined) ?? 'lb'
-}
+export { getUnit }
 
 export async function getActiveSession(): Promise<Session | undefined> {
   return db.sessions.filter((s) => s.endedAt === null).first()
@@ -242,6 +241,7 @@ export function addSessionExercise(sessionId: string, exerciseId: string): Promi
       exerciseId,
       order: (cards.at(-1)?.order ?? -1) + 1,
       ...TEMPLATE_EXERCISE_DEFAULTS,
+      restSeconds: await getDefaultRestSeconds(),
       updatedAt: Date.now(),
     }
     await db.sessionExercises.add(card)

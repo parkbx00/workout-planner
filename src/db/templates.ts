@@ -1,7 +1,11 @@
 import { db, newId } from './db.ts'
+import { getDefaultRestSeconds } from './settings.ts'
 import type { Template, TemplateExercise } from './types.ts'
 
-/** Targets given to an exercise when it's added to a template. All editable afterwards. */
+/**
+ * Targets given to an exercise when it's added to a template. All editable afterwards.
+ * The rest time here is only the factory value; Settings can change the default.
+ */
 export const TEMPLATE_EXERCISE_DEFAULTS = {
   targetSets: 3,
   repMin: 8,
@@ -61,7 +65,7 @@ export function addTemplateExercise(
   templateId: string,
   exerciseId: string,
 ): Promise<TemplateExercise> {
-  return db.transaction('rw', db.templateExercises, async () => {
+  return db.transaction('rw', db.templateExercises, db.settings, async () => {
     const current = await listTemplateExercises(templateId)
     const row: TemplateExercise = {
       id: newId(),
@@ -69,6 +73,7 @@ export function addTemplateExercise(
       exerciseId,
       order: (current.at(-1)?.order ?? -1) + 1,
       ...TEMPLATE_EXERCISE_DEFAULTS,
+      restSeconds: await getDefaultRestSeconds(),
       updatedAt: Date.now(),
     }
     await db.templateExercises.add(row)

@@ -1,13 +1,17 @@
 import { db, newId } from './db.ts'
+import { bodyHalf, FACTORY_INCREMENTS, type IncrementDefaults } from './settings.ts'
 import type { Equipment, Exercise, MuscleGroup } from './types.ts'
 
-const LOWER_BODY: MuscleGroup[] = ['quads', 'hamstrings', 'glutes', 'calves']
-
-/** Default weight jumps: 5 lb / 2.5 kg for upper body, 10 lb / 5 kg for lower body. */
-export function defaultIncrements(muscleGroup: MuscleGroup) {
-  return LOWER_BODY.includes(muscleGroup)
-    ? { incrementLb: 10, incrementKg: 5 }
-    : { incrementLb: 5, incrementKg: 2.5 }
+/**
+ * Default weight jumps for a muscle group: 5 lb / 2.5 kg for upper body and
+ * 10 lb / 5 kg for lower body, unless changed in Settings.
+ */
+export function defaultIncrements(
+  muscleGroup: MuscleGroup,
+  defaults: IncrementDefaults = FACTORY_INCREMENTS,
+) {
+  const d = defaults[bodyHalf(muscleGroup)]
+  return { incrementLb: d.lb, incrementKg: d.kg }
 }
 
 export interface ExerciseInput {

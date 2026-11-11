@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { isBackupDue } from '../db/backup.ts'
 import { db } from '../db/db.ts'
 import { getActiveSession, startSession } from '../db/sessions.ts'
 import { DAY_LABEL } from '../lib/labels.ts'
@@ -10,7 +11,8 @@ export default function Today() {
   const [today] = useState(() => new Date())
 
   const data = useLiveQuery(async () => {
-    const [active, templates, rows, exercises] = await Promise.all([
+    const [backupDue, active, templates, rows, exercises] = await Promise.all([
+      isBackupDue(),
       getActiveSession(),
       db.templates.orderBy('order').toArray(),
       db.templateExercises.orderBy('[templateId+order]').toArray(),
@@ -27,7 +29,7 @@ export default function Today() {
     const activeTemplate = active?.templateId
       ? templates.find((t) => t.id === active.templateId)
       : undefined
-    return { active: active ?? null, activeTemplate, templates, preview }
+    return { active: active ?? null, activeTemplate, templates, preview, backupDue }
   }, [])
 
   async function start(templateId: string | null) {
@@ -45,10 +47,28 @@ export default function Today() {
   )
   if (!data) return header
 
+  const backupBanner = data.backupDue && (
+    <Link
+      to="/settings"
+      className="mt-5 flex min-h-14 items-center justify-between gap-3 rounded-xl border border-amber-400/40 bg-amber-950/60 px-4 py-2"
+    >
+      <span>
+        <span className="block font-semibold text-amber-200">Back up your workouts</span>
+        <span className="block text-sm text-amber-100/80">
+          No backup in the last 7 days. Your log lives only on this phone.
+        </span>
+      </span>
+      <span aria-hidden="true" className="text-amber-200">
+        ›
+      </span>
+    </Link>
+  )
+
   if (data.active) {
     return (
       <>
         {header}
+        {backupBanner}
         <section className="bg-surface mt-6 rounded-2xl p-4">
           <p className="text-accent text-sm font-semibold">Workout in progress</p>
           <h2 className="mt-1 text-2xl font-bold">{data.activeTemplate?.name ?? 'Workout'}</h2>
@@ -76,6 +96,7 @@ export default function Today() {
   return (
     <>
       {header}
+      {backupBanner}
 
       {todays ? (
         <section className="bg-surface mt-6 rounded-2xl p-4">

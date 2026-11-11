@@ -9,6 +9,7 @@ import {
   setExerciseArchived,
   updateExercise,
 } from '../db/exercises.ts'
+import { getIncrementDefaults, type IncrementDefaults } from '../db/settings.ts'
 import {
   EQUIPMENT,
   MUSCLE_GROUPS,
@@ -28,6 +29,8 @@ export default function ExerciseForm() {
     [id],
   )
 
+  const defaults = useLiveQuery(getIncrementDefaults, [])
+
   if (id && existing === undefined) return null
   if (id && existing === null) {
     return (
@@ -38,7 +41,8 @@ export default function ExerciseForm() {
     )
   }
   // key: reset the form state if the route switches to a different exercise
-  return <Form key={id ?? 'new'} existing={existing ?? null} />
+  if (!defaults) return null
+  return <Form key={id ?? 'new'} existing={existing ?? null} defaults={defaults} />
 }
 
 function BackLink() {
@@ -49,13 +53,17 @@ function BackLink() {
   )
 }
 
-function Form({ existing }: { existing: Exercise | null }) {
+function Form({ existing, defaults }: { existing: Exercise | null; defaults: IncrementDefaults }) {
   const navigate = useNavigate()
   const [name, setName] = useState(existing?.name ?? '')
   const [muscleGroup, setMuscleGroup] = useState<MuscleGroup>(existing?.muscleGroup ?? 'chest')
   const [equipment, setEquipment] = useState<Equipment>(existing?.equipment ?? 'machine')
-  const [incrementLb, setIncrementLb] = useState(String(existing?.incrementLb ?? 5))
-  const [incrementKg, setIncrementKg] = useState(String(existing?.incrementKg ?? 2.5))
+  const [incrementLb, setIncrementLb] = useState(
+    String(existing?.incrementLb ?? defaults.upper.lb),
+  )
+  const [incrementKg, setIncrementKg] = useState(
+    String(existing?.incrementKg ?? defaults.upper.kg),
+  )
   // Until the user types an increment, keep it following the muscle group's default.
   const [incrementsTouched, setIncrementsTouched] = useState(existing !== null)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +72,7 @@ function Form({ existing }: { existing: Exercise | null }) {
   function changeMuscleGroup(next: MuscleGroup) {
     setMuscleGroup(next)
     if (!incrementsTouched) {
-      const d = defaultIncrements(next)
+      const d = defaultIncrements(next, defaults)
       setIncrementLb(String(d.incrementLb))
       setIncrementKg(String(d.incrementKg))
     }
